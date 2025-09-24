@@ -25,6 +25,12 @@ ensureInitialUser(defaultUser, defaultPass);
 
 app.use('/api', api);
 
+const path = require('path');
+const { DB_PATH } = require('./db');
+const uploadsPath = path.join(path.dirname(DB_PATH), 'uploads');
+app.use('/uploads', express.static(uploadsPath));
+
+
 // static frontend if built
 const frontendDist = path.join(__dirname, '..', 'frontend_dist');
 app.use(express.static(frontendDist));
