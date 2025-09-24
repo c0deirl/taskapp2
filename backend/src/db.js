@@ -1,22 +1,46 @@
+// backend/src/db.js (debug version)
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
-const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'tasks.db');
 
-function ensureDir(p) {
-  const dir = path.dirname(p);
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'tasks.db');
+
+function ensureDirFor(filePath) {
+  const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-ensureDir(dbPath);
-const db = new Database(dbPath);
+ensureDirFor(DB_PATH);
 
+console.log('SQLite DB path:', DB_PATH);
+
+const db = new Database(DB_PATH);
+
+// Run migrations immediately and synchronously, and log state
 function migrate() {
-  const sql = fs.readFileSync(path.join(__dirname, 'migrations.sql'), 'utf8');
-  db.exec(sql);
-  console.log('migrations applied');
+  try {
+    const sqlPath = path.join(__dirname, 'migrations.sql');
+    if (!fs.existsSync(sqlPath)) {
+      console.warn('migrations.sql not found at', sqlPath);
+      return;
+    }
+    const sql = fs.readFileSync(sqlPath, 'utf8');
+    console.log('--- migrations.sql (start) ---');
+    console.log(sql);
+    console.log('--- migrations.sql (end) ---');
+    db.exec(sql);
+    console.log('migrations applied');
+    // show what tables now exist
+    const rows = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name;").all();
+    console.log('tables after migrations:');
+    rows.forEach(r => console.log(r.name));
+  } catch (err) {
+    console.error('migrate failed:', err);
+    throw err;
+  }
 }
 
-if (require.main === module) migrate();
+// Ensure migrations run once on module load
+migrate();
 
-module.exports = { db, migrate };
+module.exports = { db, migrate, DB_PATH };
