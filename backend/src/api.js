@@ -73,6 +73,11 @@ router.get('/settings', (req, res) => {
   });
 });
 
+// helper: check task exists
+function taskExists(taskId) {
+  return !!db.prepare('SELECT 1 FROM tasks WHERE id = ?').get(taskId);
+}
+
 // GET /api/tasks
 router.get('/tasks', (req, res) => {
   try {
