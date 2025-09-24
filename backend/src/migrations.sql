@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS reminders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id INTEGER NOT NULL,
-  remind_at TEXT NOT NULL,
+  remind_at TEXT,
   sent INTEGER DEFAULT 0,
   channel TEXT NOT NULL,
   template TEXT,

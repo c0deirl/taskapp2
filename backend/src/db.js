@@ -39,6 +39,8 @@ function migrate() {
     throw err;
   }
 }
+const { ensureRemindAtNullable } = require('./migrate_remind_at');
+ensureRemindAtNullable(db);
 
 // Ensure migrations run once on module load
 migrate();
