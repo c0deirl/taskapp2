@@ -109,4 +109,52 @@ router.delete('/tasks/:id', (req, res) => {
   }
 });
 
+// --- Reminders routes ---
+
+// GET /api/tasks/:id/reminders
+router.get('/tasks/:id/reminders', (req, res) => {
+  const taskId = Number(req.params.id);
+  if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
+  try {
+    const reminders = db.prepare('SELECT * FROM reminders WHERE task_id = ? ORDER BY id').all(taskId);
+    res.json(reminders);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+// POST /api/tasks/:id/reminders
+router.post('/tasks/:id/reminders', (req, res) => {
+  const taskId = Number(req.params.id);
+  if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
+  const { channel, when_at, template } = req.body || {};
+  if (!channel) return res.status(400).json({ error: 'channel required' });
+  // when_at optional; template optional
+  try {
+    const info = db.prepare(
+      'INSERT INTO reminders(task_id, channel, when_at, template, created_at) VALUES (?, ?, ?, ?, datetime(\'now\'))'
+    ).run(taskId, channel, when_at || null, template || null);
+    const reminder = db.prepare('SELECT * FROM reminders WHERE id = ?').get(info.lastInsertRowid);
+    res.json(reminder);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+// DELETE /api/tasks/:taskId/reminders/:reminderId
+router.delete('/tasks/:taskId/reminders/:reminderId', (req, res) => {
+  const taskId = Number(req.params.taskId);
+  const reminderId = Number(req.params.reminderId);
+  if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
+  try {
+    db.prepare('DELETE FROM reminders WHERE id = ? AND task_id = ?').run(reminderId, taskId);
+    res.status(204).end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
 module.exports = router;
