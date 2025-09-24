@@ -1,0 +1,35 @@
+require('dotenv').config();
+const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
+const path = require('path');
+const { migrate } = require('./db');
+const { ensureInitialUser } = require('./auth');
+const api = require('./api');
+const scheduler = require('./scheduler');
+
+const app = express();
+app.use(helmet());
+app.use(cors());
+
+migrate();
+
+// create initial admin user from env if provided
+const defaultUser = process.env.ADMIN_USER || 'admin';
+const defaultPass = process.env.ADMIN_PASS || 'admin';
+ensureInitialUser(defaultUser, defaultPass);
+
+app.use('/api', api);
+
+// static frontend if built
+const frontendDist = path.join(__dirname, '..', 'frontend_dist');
+app.use(express.static(frontendDist));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendDist, 'index.html'));
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`backend listening on ${port}`);
+  scheduler.start(Number(process.env.SCHED_INTERVAL_MS) || 60000);
+});
