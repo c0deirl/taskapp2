@@ -1,9 +1,15 @@
+// backend/src/index.js
 require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const path = require('path');
+
+// load db and immediately run migrations before anything that might query the DB
 const { migrate } = require('./db');
+migrate();
+
+// now safe to load modules that query the database
 const { ensureInitialUser } = require('./auth');
 const api = require('./api');
 const scheduler = require('./scheduler');
@@ -11,8 +17,6 @@ const scheduler = require('./scheduler');
 const app = express();
 app.use(helmet());
 app.use(cors());
-
-migrate();
 
 // create initial admin user from env if provided
 const defaultUser = process.env.ADMIN_USER || 'admin';
