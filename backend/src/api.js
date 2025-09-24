@@ -209,19 +209,49 @@ router.post('/tasks/:id/reminders', (req, res) => {
       remind_at = `${body.date}T${body.time}`;
     }
 
-    // Normalize remind_at to full ISO with timezone if possible
-    if (remind_at) {
-      try {
-        const d = new Date(remind_at);
-        if (!isNaN(d.getTime())) {
-          remind_at = d.toISOString(); // normalized ISO (UTC)
-        } else {
-          console.warn('remind_at could not be parsed to Date, storing raw:', remind_at);
-        }
-      } catch (e) {
-        console.warn('remind_at normalization error', e && e.stack ? e.stack : e);
+   // Normalize remind_at to a canonical UTC ISO string (accepts epoch, ISO with TZ, or naive local)
+let remind_at_raw = body.remind_at || body.when_at || null;
+if (!remind_at_raw && body.date && body.time) remind_at_raw = `${body.date}T${body.time}`;
+
+let remind_at = null;
+if (remind_at_raw != null) {
+  // numeric epoch (seconds or milliseconds)
+  if (typeof remind_at_raw === 'number' || /^[0-9]+$/.test(String(remind_at_raw))) {
+    const n = Number(remind_at_raw);
+    const ts = n < 1e12 ? n * 1000 : n; // treat <1e12 as seconds
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) remind_at = d.toISOString();
+  } else if (typeof remind_at_raw === 'string') {
+    const s = remind_at_raw.trim();
+    // If string includes timezone (Z or ±HH:MM) let Date parse it and convert to ISO
+    if (/[zZ]$/.test(s) || /[+\-]\d{2}:\d{2}$/.test(s)) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) remind_at = d.toISOString();
+    } else {
+      // Naive datetime without timezone (e.g., "2025-09-24T17:39" or "2025-09-24 17:39")
+      const m = s.match(/^(\d{4})-?(\d{2})-?(\d{2})[T\s]?(\d{2}):?(\d{2})(?::?(\d{2}))?$/);
+      if (m) {
+        const year = Number(m[1]);
+        const month = Number(m[2]) - 1;
+        const day = Number(m[3]);
+        const hour = Number(m[4]);
+        const minute = Number(m[5]);
+        const second = m[6] ? Number(m[6]) : 0;
+        // Construct using local time and convert to UTC ISO
+        const d = new Date(year, month, day, hour, minute, second);
+        if (!isNaN(d.getTime())) remind_at = d.toISOString();
+      } else {
+        // Last resort: try Date parser
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) remind_at = d.toISOString();
       }
     }
+  }
+}
+
+if (!remind_at) return res.status(400).json({ error: 'remind_at required or could not be parsed' });
+
+console.log('remind_at raw:', remind_at_raw, 'normalized UTC ISO:', remind_at);
 
     const channel = body.channel;
     const template = body.template || null;
