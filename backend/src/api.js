@@ -212,13 +212,20 @@ router.post('/tasks/:id/reminders', (req, res) => {
 
     const channel = body.channel;
     const template = body.template || null;
+    // accept topic and server_url (tolerate alternate names)
+    const topic = body.topic || body.ntfy_topic || null;
+    const server_url = body.server_url || body.ntfy_server || null;
 
     if (!channel) return res.status(400).json({ error: 'channel required' });
     if (!remind_at) return res.status(400).json({ error: 'remind_at required' });
+    // if you want topic required, uncomment next line
+    // if (!topic) return res.status(400).json({ error: 'topic required' });
+
+    console.log('Inserting reminder', { taskId, channel, remind_at, topic, server_url, template });
 
     const info = db.prepare(
-      "INSERT INTO reminders(task_id, channel, remind_at, template, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
-    ).run(taskId, channel, remind_at, template);
+      "INSERT INTO reminders(task_id, channel, remind_at, topic, server_url, template, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
+    ).run(taskId, channel, remind_at, topic, server_url, template);
 
     const reminder = db.prepare('SELECT * FROM reminders WHERE id = ?').get(info.lastInsertRowid);
     res.json(reminder);
@@ -227,6 +234,7 @@ router.post('/tasks/:id/reminders', (req, res) => {
     res.status(500).json({ error: 'internal' });
   }
 });
+
 
 // DELETE /api/tasks/:taskId/reminders/:reminderId
 router.delete('/tasks/:taskId/reminders/:reminderId', (req, res) => {
