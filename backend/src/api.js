@@ -206,35 +206,89 @@ router.post('/tasks/:id/reminders', (req, res) => {
     // accept either remind_at or when_at; also accept date + time pairs
     let remind_at = body.remind_at || body.when_at || null;
     if (!remind_at && body.date && body.time) {
-      const combined = `${body.date}T${body.time}`;
-      remind_at = new Date(combined).toISOString();
+      remind_at = `${body.date}T${body.time}`;
+    }
+
+    // Normalize remind_at to full ISO with timezone if possible
+    if (remind_at) {
+      // If no seconds or timezone, try to produce a proper ISO string
+      // If it's already ISO-ish, Date will handle it; fallback to original string if invalid.
+      try {
+        const d = new Date(remind_at);
+        if (!isNaN(d.getTime())) {
+          remind_at = d.toISOString(); // normalized ISO (UTC)
+        } else {
+          // keep original but log
+          console.warn('remind_at could not be parsed to Date, storing raw:', remind_at);
+        }
+      } catch (e) {
+        console.warn('remind_at normalization error', e && e.stack ? e.stack : e);
+      }
     }
 
     const channel = body.channel;
     const template = body.template || null;
-    // accept topic and server_url (tolerate alternate names)
     const topic = body.topic || body.ntfy_topic || null;
     const server_url = body.server_url || body.ntfy_server || null;
 
     if (!channel) return res.status(400).json({ error: 'channel required' });
     if (!remind_at) return res.status(400).json({ error: 'remind_at required' });
-    // if you want topic required, uncomment next line
-    // if (!topic) return res.status(400).json({ error: 'topic required' });
 
-    console.log('Inserting reminder', { taskId, channel, remind_at, topic, server_url, template });
+    // Prepare an insert that accommodates different schemas:
+    // If your table has remind_at column, we'll try to insert into remind_at.
+    // If it has when_at, that won't hurt if column missing (sqlite will error),
+    // so we detect columns first and choose appropriate INSERT form.
+    const colsInfo = db.prepare("PRAGMA table_info(reminders);").all().map(c => c.name);
+    const hasRemindAt = colsInfo.includes('remind_at');
+    const hasWhenAt = colsInfo.includes('when_at');
+    const hasTopic = colsInfo.includes('topic');
+    const hasServerUrl = colsInfo.includes('server_url');
 
-    const info = db.prepare(
-      "INSERT INTO reminders(task_id, channel, remind_at, topic, server_url, template, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
-    ).run(taskId, channel, remind_at, topic, server_url, template);
+    let info;
+    if (hasRemindAt) {
+      // Build column list dynamically based on available columns
+      const insertCols = ['task_id','channel','remind_at'];
+      const insertVals = [taskId, channel, remind_at];
+      if (hasTopic) { insertCols.push('topic'); insertVals.push(topic); }
+      if (hasServerUrl) { insertCols.push('server_url'); insertVals.push(server_url); }
+      insertCols.push('template'); insertVals.push(template);
+      insertCols.push('created_at');
+      const placeholders = insertCols.map(_ => '?').join(', ');
+      const sql = `INSERT INTO reminders(${insertCols.join(',')}) VALUES (${placeholders})`;
+      info = db.prepare(sql).run(...insertVals);
+    } else if (hasWhenAt) {
+      const insertCols = ['task_id','channel','when_at'];
+      const insertVals = [taskId, channel, remind_at];
+      if (hasTopic) { insertCols.push('topic'); insertVals.push(topic); }
+      if (hasServerUrl) { insertCols.push('server_url'); insertVals.push(server_url); }
+      insertCols.push('template'); insertVals.push(template);
+      insertCols.push('created_at');
+      const placeholders = insertCols.map(_ => '?').join(', ');
+      const sql = `INSERT INTO reminders(${insertCols.join(',')}) VALUES (${placeholders})`;
+      info = db.prepare(sql).run(...insertVals);
+    } else {
+      // fallback: try inserting without a timestamp column (shouldn't happen)
+      const insertCols = ['task_id','channel'];
+      const insertVals = [taskId, channel];
+      if (hasTopic) { insertCols.push('topic'); insertVals.push(topic); }
+      if (hasServerUrl) { insertCols.push('server_url'); insertVals.push(server_url); }
+      insertCols.push('template'); insertVals.push(template);
+      insertCols.push('created_at'); insertVals.push(null);
+      const placeholders = insertCols.map(_ => '?').join(', ');
+      const sql = `INSERT INTO reminders(${insertCols.join(',')}) VALUES (${placeholders})`;
+      info = db.prepare(sql).run(...insertVals);
+    }
 
-    const reminder = db.prepare('SELECT * FROM reminders WHERE id = ?').get(info.lastInsertRowid);
-    res.json(reminder);
+    console.log('Inserted reminder id:', info.lastInsertRowid);
+    const inserted = db.prepare('SELECT * FROM reminders WHERE id = ?').get(info.lastInsertRowid);
+    console.log('Inserted row:', inserted);
+
+    res.json(inserted);
   } catch (err) {
     console.error('POST /tasks/:id/reminders error', err && err.stack ? err.stack : err);
     res.status(500).json({ error: 'internal' });
   }
 });
-
 
 // DELETE /api/tasks/:taskId/reminders/:reminderId
 router.delete('/tasks/:taskId/reminders/:reminderId', (req, res) => {
