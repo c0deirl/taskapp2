@@ -1,46 +1,65 @@
 // backend/src/index.js
-require('dotenv').config();
 const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+const morgan = require('morgan');
+const api = require('./api');          // your routes (assumes router exported)
+const { DB_PATH } = require('./db');  // assumes db.js exports DB_PATH and db
 
-// load db and immediately run migrations before anything that might query the DB
-const { migrate } = require('./db');
-migrate();
-
-// now safe to load modules that query the database
-const { ensureInitialUser } = require('./auth');
-const api = require('./api');
-const scheduler = require('./scheduler');
-
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || '0.0.0.0';
 const app = express();
-app.use(helmet());
-app.use(cors());
 
-// create initial admin user from env if provided
-const defaultUser = process.env.ADMIN_USER || 'admin';
-const defaultPass = process.env.ADMIN_PASS || 'admin';
-ensureInitialUser(defaultUser, defaultPass);
+// Logging
+app.use(morgan('combined'));
 
-const path = require('path');
-const { DB_PATH } = require('./db');
-const uploadsPath = path.join(path.dirname(DB_PATH), 'uploads');
-app.use('/uploads', express.static(uploadsPath));
+// Basic JSON/body parsing for routes that need it (api routes can also use express.json() per-route)
+app.use(express.json({ limit: '1mb' }));
 
+// Ensure uploads directory exists (store uploads next to the DB file)
+const dataDir = path.dirname(DB_PATH || path.join(__dirname, '..', 'data', 'db.sqlite'));
+const uploadsDir = path.join(dataDir, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
-// static frontend if built
-const frontendDist = path.join(__dirname, '..', 'frontend_dist');
-app.use(express.static(frontendDist));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(frontendDist, 'index.html'));
-});
+// Serve uploaded files at /uploads/*
+app.use('/uploads', express.static(uploadsDir));
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`backend listening on ${port}`);
-  scheduler.start(Number(process.env.SCHED_INTERVAL_MS) || 60000);
-});
-
-const api = require('./api');
+// Mount API router at /api
 app.use('/api', api);
+
+// Optional: health check
+app.get('/healthz', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
+// Serve frontend build if available (optional)
+const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  // SPA fallback
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+} else {
+  // If no frontend build, provide a small root message
+  app.get('/', (req, res) => res.send('Backend running'));
+}
+
+// Start scheduler if present
+try {
+  // scheduler.js should export start()
+  // it will tolerate being required even if missing (wrap in try/catch)
+  // eslint-disable-next-line global-require
+  const scheduler = require('./scheduler');
+  if (scheduler && typeof scheduler.start === 'function') {
+    scheduler.start(Number(process.env.SCHED_INTERVAL_MS) || 60_000);
+    console.log('Scheduler started');
+  }
+} catch (err) {
+  console.warn('No scheduler started:', err.message || err);
+}
+
+// Start server
+app.listen(PORT, HOST, () => {
+  console.log(`Backend listening on http://${HOST}:${PORT}`);
+});
