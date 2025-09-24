@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS reminders (
   channel TEXT NOT NULL,
   template TEXT,
   server_url TEXT,
+  when_at TEXT,
   topic TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
