@@ -33,17 +33,35 @@ function upsertSetting(key, value) {
   upsert.run(key, value);
 }
 
-// POST /api/settings/logo
+// POST /api/settings/logo (file upload)
 router.post('/settings/logo', upload.single('logo'), (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    // set path relative to server root that the frontend can use
-    const relPath = `/uploads/${req.file.filename}`;
-    upsertSetting('app_logo', relPath);
-    res.json({ logo: relPath });
+    if (!req.file) return res.status(400).json({ error: 'file required' });
+    // store the public path in settings (served via /uploads/ route proxied by nginx)
+    const publicPath = `/uploads/${path.basename(req.file.path)}`;
+    const insert = db.prepare('INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    insert.run('app_logo', JSON.stringify(publicPath));
+    res.json({ logo: publicPath });
   } catch (err) {
-    console.error('logo upload error', err);
-    res.status(500).json({ error: 'Upload failed' });
+    console.error('POST /settings/logo error', err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+
+// PUT /api/settings (replace multiple settings)
+router.put('/settings', (req, res) => {
+  try {
+    const settings = req.body || {};
+    const insert = db.prepare('INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    const tx = db.transaction((pairs) => {
+      for (const [k, v] of pairs) insert.run(k, JSON.stringify(v));
+    });
+    tx(Object.entries(settings));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PUT /settings error', err);
+    res.status(500).json({ error: 'internal' });
   }
 });
 
@@ -60,17 +78,17 @@ router.post('/settings', express.json(), (req, res) => {
   res.status(204).end();
 });
 
-// Ensure GET /api/settings returns app_title and app_logo
+// GET /api/settings
 router.get('/settings', (req, res) => {
-  const rows = db.prepare('SELECT key, value FROM settings').all();
-  const out = {};
-  rows.forEach(r => out[r.key] = r.value);
-  res.json({
-    ntfy_server: out.ntfy_server || null,
-    ntfy_topic: out.ntfy_topic || null,
-    app_title: out.app_title || 'TaskMgr',
-    app_logo: out.app_logo || null
-  });
+  try {
+    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const obj = {};
+    for (const r of rows) obj[r.key] = JSON.parse(r.value);
+    res.json(obj);
+  } catch (err) {
+    console.error('GET /settings error', err);
+    res.status(500).json({ error: 'internal' });
+  }
 });
 
 // helper: check task exists
@@ -94,7 +112,11 @@ router.post('/tasks', (req, res) => {
   try {
     const { title, notes, due_at } = req.body || {};
     if (!title) return res.status(400).json({ error: 'title required' });
-    const info = db.prepare('INSERT INTO tasks(title, notes, due_at, created_at) VALUES (?, ?, ?, datetime(\'now\'))').run(title, notes || null, due_at || null);
+
+    const info = db.prepare(
+      'INSERT INTO tasks(title, notes, due_at, created_at) VALUES (?, ?, ?, datetime(\'now\'))'
+    ).run(title, notes || null, due_at || null);
+
     const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
     res.json(task);
   } catch (err) {
@@ -103,10 +125,42 @@ router.post('/tasks', (req, res) => {
   }
 });
 
-// DELETE task
+// GET /api/tasks/:id
+router.get('/tasks/:id', (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    if (!task) return res.status(404).json({ error: 'task not found' });
+    res.json(task);
+  } catch (err) {
+    console.error('GET /tasks/:id error', err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+// PUT /api/tasks/:id
+router.put('/tasks/:id', (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { title, notes, due_at } = req.body || {};
+    if (!taskExists(id)) return res.status(404).json({ error: 'task not found' });
+    db.prepare('UPDATE tasks SET title = ?, notes = ?, due_at = ? WHERE id = ?')
+      .run(title || null, notes || null, due_at || null, id);
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    res.json(task);
+  } catch (err) {
+    console.error('PUT /tasks/:id error', err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+
+// DELETE /api/tasks/:id
 router.delete('/tasks/:id', (req, res) => {
   try {
-    db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+    const id = Number(req.params.id);
+    if (!taskExists(id)) return res.status(404).json({ error: 'task not found' });
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
     res.status(204).end();
   } catch (err) {
     console.error('DELETE /tasks/:id error', err);
@@ -114,52 +168,65 @@ router.delete('/tasks/:id', (req, res) => {
   }
 });
 
-// --- Reminders routes ---
+// -------------------- Reminders --------------------
 
 // GET /api/tasks/:id/reminders
 router.get('/tasks/:id/reminders', (req, res) => {
-  const taskId = Number(req.params.id);
-  if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
   try {
+    const taskId = Number(req.params.id);
+    if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
     const reminders = db.prepare('SELECT * FROM reminders WHERE task_id = ? ORDER BY id').all(taskId);
     res.json(reminders);
   } catch (err) {
-    console.error(err);
+    console.error('GET /tasks/:id/reminders error', err);
     res.status(500).json({ error: 'internal' });
   }
 });
 
 // POST /api/tasks/:id/reminders
 router.post('/tasks/:id/reminders', (req, res) => {
-  const taskId = Number(req.params.id);
-  if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
-  const { channel, when_at, template } = req.body || {};
-  if (!channel) return res.status(400).json({ error: 'channel required' });
-  // when_at optional; template optional
   try {
+    console.log('POST /tasks/:id/reminders req.body:', req.body);
+    const taskId = Number(req.params.id);
+    if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
+
+    const body = req.body || {};
+    // accept either remind_at or when_at; also accept date + time pairs
+    let remind_at = body.remind_at || body.when_at || null;
+    if (!remind_at && body.date && body.time) {
+      const combined = `${body.date}T${body.time}`;
+      remind_at = new Date(combined).toISOString();
+    }
+
+    const channel = body.channel;
+    const template = body.template || null;
+
+    if (!channel) return res.status(400).json({ error: 'channel required' });
+    if (!remind_at) return res.status(400).json({ error: 'remind_at required' });
+
     const info = db.prepare(
-      'INSERT INTO reminders(task_id, channel, when_at, template, created_at) VALUES (?, ?, ?, ?, datetime(\'now\'))'
-    ).run(taskId, channel, when_at || null, template || null);
+      'INSERT INTO reminders(task_id, channel, remind_at, template, created_at) VALUES (?, ?, ?, ?, datetime(\'now\'))'
+    ).run(taskId, channel, remind_at, template);
+
     const reminder = db.prepare('SELECT * FROM reminders WHERE id = ?').get(info.lastInsertRowid);
     res.json(reminder);
   } catch (err) {
-    console.error(err);
+    console.error('POST /tasks/:id/reminders error', err && err.stack ? err.stack : err);
     res.status(500).json({ error: 'internal' });
   }
 });
 
 // DELETE /api/tasks/:taskId/reminders/:reminderId
 router.delete('/tasks/:taskId/reminders/:reminderId', (req, res) => {
-  const taskId = Number(req.params.taskId);
-  const reminderId = Number(req.params.reminderId);
-  if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
   try {
+    const taskId = Number(req.params.taskId);
+    const reminderId = Number(req.params.reminderId);
+    if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
     db.prepare('DELETE FROM reminders WHERE id = ? AND task_id = ?').run(reminderId, taskId);
     res.status(204).end();
   } catch (err) {
-    console.error(err);
+    console.error('DELETE /reminders error', err);
     res.status(500).json({ error: 'internal' });
   }
 });
-
 module.exports = router;
