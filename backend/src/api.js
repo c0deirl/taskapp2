@@ -37,9 +37,10 @@ function upsertSetting(key, value) {
 router.post('/settings/logo', upload.single('logo'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'file required' });
-    // store the public path in settings (served via /uploads/ route proxied by nginx)
     const publicPath = `/uploads/${path.basename(req.file.path)}`;
-    const insert = db.prepare('INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    const insert = db.prepare(
+      "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+    );
     insert.run('app_logo', JSON.stringify(publicPath));
     res.json({ logo: publicPath });
   } catch (err) {
@@ -53,9 +54,13 @@ router.post('/settings/logo', upload.single('logo'), (req, res) => {
 router.put('/settings', (req, res) => {
   try {
     const settings = req.body || {};
-    const insert = db.prepare('INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    const insert = db.prepare(
+      "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+    );
     const tx = db.transaction((pairs) => {
-      for (const [k, v] of pairs) insert.run(k, JSON.stringify(v));
+      for (const [k, v] of pairs) {
+        insert.run(k, JSON.stringify(v));
+      }
     });
     tx(Object.entries(settings));
     res.json({ ok: true });
@@ -83,7 +88,15 @@ router.get('/settings', (req, res) => {
   try {
     const rows = db.prepare('SELECT key, value FROM settings').all();
     const obj = {};
-    for (const r of rows) obj[r.key] = JSON.parse(r.value);
+    for (const r of rows) {
+      const raw = r.value;
+      try {
+        obj[r.key] = JSON.parse(raw);
+      } catch (e) {
+        console.warn(`settings: value for key=${r.key} is not JSON, returning raw string`);
+        obj[r.key] = raw;
+      }
+    }
     res.json(obj);
   } catch (err) {
     console.error('GET /settings error', err);
@@ -114,7 +127,7 @@ router.post('/tasks', (req, res) => {
     if (!title) return res.status(400).json({ error: 'title required' });
 
     const info = db.prepare(
-      'INSERT INTO tasks(title, notes, due_at, created_at) VALUES (?, ?, ?, datetime(\'now\'))'
+      "INSERT INTO tasks(title, notes, due_at, created_at) VALUES (?, ?, ?, datetime('now'))"
     ).run(title, notes || null, due_at || null);
 
     const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
@@ -153,7 +166,6 @@ router.put('/tasks/:id', (req, res) => {
     res.status(500).json({ error: 'internal' });
   }
 });
-
 
 // DELETE /api/tasks/:id
 router.delete('/tasks/:id', (req, res) => {
@@ -205,7 +217,7 @@ router.post('/tasks/:id/reminders', (req, res) => {
     if (!remind_at) return res.status(400).json({ error: 'remind_at required' });
 
     const info = db.prepare(
-      'INSERT INTO reminders(task_id, channel, remind_at, template, created_at) VALUES (?, ?, ?, ?, datetime(\'now\'))'
+      "INSERT INTO reminders(task_id, channel, remind_at, template, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
     ).run(taskId, channel, remind_at, template);
 
     const reminder = db.prepare('SELECT * FROM reminders WHERE id = ?').get(info.lastInsertRowid);
@@ -229,4 +241,7 @@ router.delete('/tasks/:taskId/reminders/:reminderId', (req, res) => {
     res.status(500).json({ error: 'internal' });
   }
 });
+
+// -------------------- Health --------------------
+router.get('/healthz', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 module.exports = router;
