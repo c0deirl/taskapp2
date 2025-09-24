@@ -25,6 +25,20 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Reminders attached to tasks
+CREATE TABLE IF NOT EXISTS reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL,
+  remind_at TEXT NOT NULL,    -- ISO 8601 string
+  sent INTEGER DEFAULT 0,     -- 0 = pending, 1 = sent
+  channel TEXT NOT NULL,      -- 'email' or 'ntfy'
+  template TEXT,              -- optional per-reminder template (Handlebars)
+  server_url TEXT,
+  when_at TEXT,
+  topic TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
 
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
