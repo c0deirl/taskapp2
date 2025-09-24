@@ -73,4 +73,40 @@ router.get('/settings', (req, res) => {
   });
 });
 
+// GET /api/tasks
+router.get('/tasks', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all();
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /tasks error', err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+// POST /api/tasks
+router.post('/tasks', (req, res) => {
+  try {
+    const { title, notes, due_at } = req.body || {};
+    if (!title) return res.status(400).json({ error: 'title required' });
+    const info = db.prepare('INSERT INTO tasks(title, notes, due_at, created_at) VALUES (?, ?, ?, datetime(\'now\'))').run(title, notes || null, due_at || null);
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
+    res.json(task);
+  } catch (err) {
+    console.error('POST /tasks error', err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+// DELETE task
+router.delete('/tasks/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+    res.status(204).end();
+  } catch (err) {
+    console.error('DELETE /tasks/:id error', err);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
 module.exports = router;

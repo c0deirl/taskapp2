@@ -64,3 +64,11 @@ CREATE TABLE IF NOT EXISTS reminders (
 );
 
 CREATE INDEX IF NOT EXISTS idx_reminders_remind_at_sent ON reminders(remind_at, sent);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  notes TEXT,
+  due_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
