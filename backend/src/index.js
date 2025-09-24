@@ -37,3 +37,6 @@ app.listen(port, () => {
   console.log(`backend listening on ${port}`);
   scheduler.start(Number(process.env.SCHED_INTERVAL_MS) || 60000);
 });
+
+const api = require('./api');
+app.use('/api', api);

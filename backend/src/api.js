@@ -1,81 +1,78 @@
+// backend/src/api.js
 const express = require('express');
-const { db } = require('./db');
-const { authMiddleware } = require('./auth');
-const bodyParser = require('body-parser');
-
 const router = express.Router();
+const { db } = require('./db');
 
-router.use(bodyParser.json());
-router.use(authMiddleware);
+// utility for settings as key-value
+function getSettingsObj() {
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const out = {};
+  rows.forEach(r => out[r.key] = r.value);
+  return out;
+}
 
-/* Tasks */
+router.get('/settings', (req, res) => {
+  const s = getSettingsObj();
+  res.json({
+    ntfy_server: s.ntfy_server || null,
+    ntfy_topic: s.ntfy_topic || null
+  });
+});
+
+router.post('/settings', express.json(), (req, res) => {
+  const { ntfy_server, ntfy_topic } = req.body;
+  const upsert = db.prepare('INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
+  if (ntfy_server === null || ntfy_server === undefined) {
+    db.prepare('DELETE FROM settings WHERE key = ?').run('ntfy_server');
+  } else {
+    upsert.run('ntfy_server', ntfy_server);
+  }
+  if (ntfy_topic === null || ntfy_topic === undefined) {
+    db.prepare('DELETE FROM settings WHERE key = ?').run('ntfy_topic');
+  } else {
+    upsert.run('ntfy_topic', ntfy_topic);
+  }
+  res.status(204).end();
+});
+
+// CRUD tasks
 router.get('/tasks', (req, res) => {
-  const rows = db.prepare('SELECT * FROM tasks ORDER BY due_at IS NULL, due_at ASC').all();
+  const rows = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all();
   res.json(rows);
 });
 
-router.post('/tasks', (req, res) => {
+router.post('/tasks', express.json(), (req, res) => {
   const { title, notes, due_at } = req.body;
-  const now = new Date().toISOString();
-  const info = db.prepare('INSERT INTO tasks (title, notes, due_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(title, notes || null, due_at || null, now, now);
-  const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
-  res.status(201).json(row);
-});
-
-router.put('/tasks/:id', (req, res) => {
-  const id = req.params.id;
-  const { title, notes, due_at } = req.body;
-  const now = new Date().toISOString();
-  db.prepare('UPDATE tasks SET title = ?, notes = ?, due_at = ?, updated_at = ? WHERE id = ?').run(title, notes || null, due_at || null, now, id);
-  res.json(db.prepare('SELECT * FROM tasks WHERE id = ?').get(id));
+  const info = db.prepare('INSERT INTO tasks(title, notes, due_at) VALUES (?, ?, ?)').run(title, notes, due_at);
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
+  res.json(task);
 });
 
 router.delete('/tasks/:id', (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
-  res.status(204).send();
+  res.status(204).end();
 });
 
-/* Reminders */
-router.get('/tasks/:id/reminders', (req, res) => {
-  const rows = db.prepare('SELECT * FROM reminders WHERE task_id = ? ORDER BY remind_at').all(req.params.id);
-  res.json(rows);
-});
-
-router.post('/tasks/:id/reminders', (req, res) => {
-  const task_id = req.params.id;
-  const { remind_at, channel, template } = req.body;
-  const now = new Date().toISOString();
-  const info = db.prepare('INSERT INTO reminders (task_id, remind_at, channel, template, created_at) VALUES (?, ?, ?, ?, ?)').run(task_id, remind_at, channel, template || null, now);
-  res.status(201).json(db.prepare('SELECT * FROM reminders WHERE id = ?').get(info.lastInsertRowid));
-});
-
-router.put('/reminders/:id', (req, res) => {
-  const { remind_at, channel, template, sent } = req.body;
-  const id = req.params.id;
-  db.prepare('UPDATE reminders SET remind_at = ?, channel = ?, template = ?, sent = ? WHERE id = ?').run(remind_at, channel, template || null, sent ? 1 : 0, id);
-  res.json(db.prepare('SELECT * FROM reminders WHERE id = ?').get(id));
+// reminders
+router.post('/tasks/:id/reminders', express.json(), (req, res) => {
+  const taskId = Number(req.params.id);
+  const { remind_at, channel, template, server_url, topic } = req.body;
+  const info = db.prepare('INSERT INTO reminders(task_id, remind_at, channel, template, server_url, topic) VALUES (?, ?, ?, ?, ?, ?)').run(taskId, remind_at, channel || 'ntfy', template || null, server_url || null, topic || null);
+  const r = db.prepare('SELECT * FROM reminders WHERE id = ?').get(info.lastInsertRowid);
+  res.json(r);
 });
 
 router.delete('/reminders/:id', (req, res) => {
   db.prepare('DELETE FROM reminders WHERE id = ?').run(req.params.id);
-  res.status(204).send();
+  res.status(204).end();
 });
 
-/* Settings */
-router.get('/settings', (req, res) => {
-  const rows = db.prepare('SELECT key, value FROM settings').all();
-  const out = {};
-  rows.forEach(r => out[r.key] = r.value);
+// optional helper: embed reminders with tasks when requested
+router.get('/tasks-embed', (req, res) => {
+  const tasks = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all();
+  const rems = db.prepare('SELECT * FROM reminders').all();
+  const out = tasks.map(t => ({ ...t, reminders: rems.filter(r => r.task_id === t.id) }));
   res.json(out);
-});
-
-router.post('/settings', (req, res) => {
-  const entries = req.body;
-  const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
-  const keys = Object.keys(entries);
-  const now = new Date().toISOString();
-  for (const k of keys) stmt.run(k, entries[k]);
-  res.json({ ok: true, updated: keys.length });
 });
 
 module.exports = router;

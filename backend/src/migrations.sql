@@ -41,3 +41,26 @@ CREATE TABLE IF NOT EXISTS reminders (
 CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
 CREATE INDEX IF NOT EXISTS idx_reminders_task_id ON reminders(task_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_remind_at_sent ON reminders(remind_at, sent);
+
+-- ensure settings keys for ntfy
+CREATE TABLE IF NOT EXISTS settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT UNIQUE NOT NULL,
+  value TEXT
+);
+
+-- reminders table (ensure includes server_url and topic)
+CREATE TABLE IF NOT EXISTS reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL,
+  remind_at TEXT NOT NULL,
+  sent INTEGER DEFAULT 0,
+  channel TEXT NOT NULL,
+  template TEXT,
+  server_url TEXT,
+  topic TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_remind_at_sent ON reminders(remind_at, sent);
