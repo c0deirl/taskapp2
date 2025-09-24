@@ -211,14 +211,11 @@ router.post('/tasks/:id/reminders', (req, res) => {
 
     // Normalize remind_at to full ISO with timezone if possible
     if (remind_at) {
-      // If no seconds or timezone, try to produce a proper ISO string
-      // If it's already ISO-ish, Date will handle it; fallback to original string if invalid.
       try {
         const d = new Date(remind_at);
         if (!isNaN(d.getTime())) {
           remind_at = d.toISOString(); // normalized ISO (UTC)
         } else {
-          // keep original but log
           console.warn('remind_at could not be parsed to Date, storing raw:', remind_at);
         }
       } catch (e) {
@@ -234,10 +231,7 @@ router.post('/tasks/:id/reminders', (req, res) => {
     if (!channel) return res.status(400).json({ error: 'channel required' });
     if (!remind_at) return res.status(400).json({ error: 'remind_at required' });
 
-    // Prepare an insert that accommodates different schemas:
-    // If your table has remind_at column, we'll try to insert into remind_at.
-    // If it has when_at, that won't hurt if column missing (sqlite will error),
-    // so we detect columns first and choose appropriate INSERT form.
+    // Inspect schema to choose appropriate insert
     const colsInfo = db.prepare("PRAGMA table_info(reminders);").all().map(c => c.name);
     const hasRemindAt = colsInfo.includes('remind_at');
     const hasWhenAt = colsInfo.includes('when_at');
@@ -246,15 +240,16 @@ router.post('/tasks/:id/reminders', (req, res) => {
 
     let info;
     if (hasRemindAt) {
-      // Build column list dynamically based on available columns
       const insertCols = ['task_id','channel','remind_at'];
       const insertVals = [taskId, channel, remind_at];
       if (hasTopic) { insertCols.push('topic'); insertVals.push(topic); }
       if (hasServerUrl) { insertCols.push('server_url'); insertVals.push(server_url); }
       insertCols.push('template'); insertVals.push(template);
-      insertCols.push('created_at');
+
+      // Use SQL literal for created_at to avoid adding a placeholder/value
       const placeholders = insertCols.map(_ => '?').join(', ');
-      const sql = `INSERT INTO reminders(${insertCols.join(',')}) VALUES (${placeholders})`;
+      const colsSql = insertCols.join(',');
+      const sql = `INSERT INTO reminders(${colsSql}, created_at) VALUES (${placeholders}, datetime('now'))`;
       info = db.prepare(sql).run(...insertVals);
     } else if (hasWhenAt) {
       const insertCols = ['task_id','channel','when_at'];
@@ -262,20 +257,22 @@ router.post('/tasks/:id/reminders', (req, res) => {
       if (hasTopic) { insertCols.push('topic'); insertVals.push(topic); }
       if (hasServerUrl) { insertCols.push('server_url'); insertVals.push(server_url); }
       insertCols.push('template'); insertVals.push(template);
-      insertCols.push('created_at');
+
       const placeholders = insertCols.map(_ => '?').join(', ');
-      const sql = `INSERT INTO reminders(${insertCols.join(',')}) VALUES (${placeholders})`;
+      const colsSql = insertCols.join(',');
+      const sql = `INSERT INTO reminders(${colsSql}, created_at) VALUES (${placeholders}, datetime('now'))`;
       info = db.prepare(sql).run(...insertVals);
     } else {
-      // fallback: try inserting without a timestamp column (shouldn't happen)
+      // fallback: try inserting without a timestamp column
       const insertCols = ['task_id','channel'];
       const insertVals = [taskId, channel];
       if (hasTopic) { insertCols.push('topic'); insertVals.push(topic); }
       if (hasServerUrl) { insertCols.push('server_url'); insertVals.push(server_url); }
       insertCols.push('template'); insertVals.push(template);
-      insertCols.push('created_at'); insertVals.push(null);
+
       const placeholders = insertCols.map(_ => '?').join(', ');
-      const sql = `INSERT INTO reminders(${insertCols.join(',')}) VALUES (${placeholders})`;
+      const colsSql = insertCols.join(',');
+      const sql = `INSERT INTO reminders(${colsSql}, created_at) VALUES (${placeholders}, datetime('now'))`;
       info = db.prepare(sql).run(...insertVals);
     }
 
@@ -289,6 +286,7 @@ router.post('/tasks/:id/reminders', (req, res) => {
     res.status(500).json({ error: 'internal' });
   }
 });
+
 
 // DELETE /api/tasks/:taskId/reminders/:reminderId
 router.delete('/tasks/:taskId/reminders/:reminderId', (req, res) => {
