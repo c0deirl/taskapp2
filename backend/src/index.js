@@ -23,8 +23,6 @@ const defaultUser = process.env.ADMIN_USER || 'admin';
 const defaultPass = process.env.ADMIN_PASS || 'admin';
 ensureInitialUser(defaultUser, defaultPass);
 
-app.use('/api', api);
-
 const path = require('path');
 const { DB_PATH } = require('./db');
 const uploadsPath = path.join(path.dirname(DB_PATH), 'uploads');
