@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const morgan = require('morgan');
 const api = require('./api');          // your routes (assumes router exported)
-const { DB_PATH } = require('./db');  // assumes db.js exports DB_PATH and db
+const { DB_PATH } = require('./db');  // ensures db.js runs migrations on require
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -45,21 +45,26 @@ if (fs.existsSync(frontendDist)) {
   app.get('/', (req, res) => res.send('Backend running'));
 }
 
-// Start scheduler if present
-try {
-  // scheduler.js should export start()
-  // it will tolerate being required even if missing (wrap in try/catch)
-  // eslint-disable-next-line global-require
-  const scheduler = require('./scheduler');
-  if (scheduler && typeof scheduler.start === 'function') {
-    scheduler.start(Number(process.env.SCHED_INTERVAL_MS) || 60_000);
-    console.log('Scheduler started');
-  }
-} catch (err) {
-  console.warn('No scheduler started:', err.message || err);
-}
-
 // Start server
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`Backend listening on http://${HOST}:${PORT}`);
+
+  // Start scheduler after server is listening and after db module has run migrations
+  try {
+    // Require scheduler lazily now that db is initialized
+    // scheduler.js should export start()
+    // eslint-disable-next-line global-require
+    const scheduler = require('./scheduler');
+    if (scheduler && typeof scheduler.start === 'function') {
+      const interval = Number(process.env.SCHED_INTERVAL_MS) || 60_000;
+      scheduler.start(interval);
+      console.log('Scheduler started (interval ms):', interval);
+    } else {
+      console.log('Scheduler module loaded but no start() function found');
+    }
+  } catch (err) {
+    console.warn('No scheduler started:', err && err.message ? err.message : err);
+  }
 });
+
+module.exports = server;
