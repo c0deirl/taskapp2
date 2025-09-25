@@ -94,6 +94,7 @@ body{
 
 /* Forms & inputs */
 input[type="text"], input[type="password"], input[type="datetime-local"], textarea, select {
+  box-sizing: border-box;
   width:100%;
   display:block;
   padding:10px 12px;
@@ -116,21 +117,27 @@ input[type="datetime-local"]{padding:9px}
 .task-editor select {
   box-sizing: border-box;
   width: 100%;
+  display: block;
   padding: 10px 12px;
-  border: 1px solid #d0d4d9;
-  border-radius: 6px;
-  background: #fff;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.03));
+  color: #e6eef8;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
   font-size: 14px;
-  line-height: 1.3;
-  color: #111827;
-  height: 40px;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  outline: none;
+}
+
+.task-editor button {
+  margin-bottom: 0;
+  margin-top: 12px;
 }
 
 /* multiline textarea sizing */
 .task-editor textarea {
   height: auto;
-  min-height: 96px;
+  min-height: 84px;
   padding-top: 10px;
   padding-bottom: 10px;
   resize: vertical;
@@ -140,8 +147,8 @@ input[type="datetime-local"]{padding:9px}
 .task-editor input:focus,
 .task-editor textarea:focus {
   outline: none;
-  border-color: #6b8cff;
-  box-shadow: 0 0 0 3px rgba(107,140,255,0.10);
+  border-color: #d9732a;
+  box-shadow: 0 0 0 3px rgba(217,115,42,0.18);
 }
 
 /* match buttons spacing if needed */
@@ -182,8 +189,8 @@ input:focus, textarea:focus, select:focus {
 .small{padding:6px 8px;font-size:13px;border-radius:8px}
 
 /* Task editor */
-.task-editor input, .task-editor textarea{margin-bottom:10px}
-.task-editor button{width:100%;margin-top:8px}
+.task-editor input, .task-editor textarea{margin-bottom:12px}
+.task-editor button{width:100%;margin-top:12px}
 
 /* Task list and tasks */
 .task-list{display:flex;flex-direction:column;gap:10px}

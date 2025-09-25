@@ -29,11 +29,13 @@ function NewTask({ onCreated }) {
     setTitle(''); setNotes(''); setDueAt('');
     onCreated && onCreated(t);
   };
-  return (
+    return (
     <div className="left task-editor">
       <h3>Create Task</h3>
-      <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Title" />
-      <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes (optional)"/>
+      <label className="muted">Title</label>
+      <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Title" />
+      <label className="muted">Notes (optional)</label>
+      <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes (optional)" />
       <label className="muted">Due date</label>
       <input type="datetime-local" value={dueAt} onChange={e=>setDueAt(e.target.value)} />
       <button className="btn" onClick={create}>Save Task</button>
