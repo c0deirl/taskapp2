@@ -1,12 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api.js';
 
+// Helper: convert an HTML datetime-local value (YYYY-MM-DDTHH:MM or with seconds)
+// into a timezone-aware UTC ISO string (e.g., 2025-09-25T14:49:00.000Z)
+function toUtcIsoFromLocalDatetime(localDatetime) {
+  if (!localDatetime) return null;
+  const parts = localDatetime.split('T');
+  if (parts.length !== 2) return null;
+  const timePart = parts[1];
+  const hasSeconds = timePart.split(':').length === 3;
+  const withSeconds = hasSeconds ? localDatetime : `${localDatetime}:00`;
+  const d = new Date(withSeconds); // interpreted in browser/local TZ
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 function NewTask({ onCreated }) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [dueAt, setDueAt] = useState('');
   const create = async () => {
-    const t = await api.post('/tasks', { title, notes, due_at: dueAt || null });
+    const payload = {
+      title,
+      notes,
+      due_at: toUtcIsoFromLocalDatetime(dueAt) || null
+    };
+    const t = await api.post('/tasks', payload);
     setTitle(''); setNotes(''); setDueAt('');
     onCreated && onCreated(t);
   };
@@ -38,22 +57,12 @@ function TaskCard({ task, onRefresh }) {
   const [topic, setTopic] = useState('');
   const [serverUrl, setServerUrl] = useState('');
 
-  // helper: combine local date/time into UTC ISO
-  const buildIsoFromLocal = (localDatetime) => {
-    if (!localDatetime) return null;
-    // ensure seconds present
-    const timePart = localDatetime.split('T')[1] || '';
-    const hasSeconds = timePart.split(':').length === 3;
-    const withSeconds = hasSeconds ? localDatetime : `${localDatetime}:00`;
-    const d = new Date(withSeconds);
-    if (isNaN(d.getTime())) return null;
-    return d.toISOString();
-  };
+  // reuse helper above to build UTC ISO from datetime-local
+  const buildIsoFromLocal = (localDatetime) => toUtcIsoFromLocalDatetime(localDatetime);
 
   const addReminder = async () => {
     const remind_at_iso = buildIsoFromLocal(remAt);
     if (!remind_at_iso) {
-      // simple client-side validation; server will also validate
       alert('Please provide a valid date and time');
       return;
     }
