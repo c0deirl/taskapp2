@@ -203,8 +203,6 @@ router.post('/tasks/:id/reminders', (req, res) => {
     if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
 
     const body = req.body || {};
-    
-    console.log('POST /tasks/:id/reminders req.body:', req.body);
 
     // Normalize remind_at to a canonical UTC ISO string (accepts epoch, ISO with TZ, or naive local)
     let remind_at_raw = body.remind_at || body.when_at || null;
@@ -251,9 +249,11 @@ router.post('/tasks/:id/reminders', (req, res) => {
 
     console.log('remind_at raw:', remind_at_raw, 'normalized UTC ISO:', remind_at);
 
-    const channel = body.channel;
+    // normalize inputs
+    const channel = body.channel || 'ntfy';
     const template = body.template || null;
-    const topic = body.topic || body.ntfy_topic || null;
+    const topicRaw = body.topic || body.ntfy_topic || null;
+    const topic = (typeof topicRaw === 'string' && topicRaw.trim().length) ? topicRaw.trim() : null;
     const server_url = body.server_url || body.ntfy_server || null;
 
     if (!channel) return res.status(400).json({ error: 'channel required' });
@@ -312,8 +312,6 @@ router.post('/tasks/:id/reminders', (req, res) => {
     res.status(500).json({ error: 'internal' });
   }
 });
-
-
 
 // DELETE /api/tasks/:taskId/reminders/:reminderId
 router.delete('/tasks/:taskId/reminders/:reminderId', (req, res) => {
