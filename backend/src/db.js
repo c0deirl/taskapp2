@@ -45,9 +45,15 @@ ensureRemindAtNullable(db);
 // Ensure migrations run once on module load
 migrate();
 
+const addSentColumns = require('./migrate_add_sent_columns');
+addSentColumns(db);
+
 // after creating `db` (better-sqlite3 instance)
 const normalizeSettings = require('./migrate_normalize_settings');
 normalizeSettings(db);
+
+
+
 
 
 module.exports = { db, migrate, DB_PATH };
