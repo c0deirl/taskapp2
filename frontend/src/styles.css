@@ -134,6 +134,11 @@ input[type="datetime-local"]{padding:9px}
   margin-top: 12px;
 }
 
+.task-editor label {
+  display: block;
+  margin-bottom: 4px;
+}
+
 /* multiline textarea sizing */
 .task-editor textarea {
   height: auto;
