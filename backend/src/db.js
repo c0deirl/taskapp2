@@ -180,4 +180,30 @@ try {
   // optional; continue
 }
 
+// --- ensure-schema (idempotent) ---
+try {
+  const cols = db.prepare("PRAGMA table_info(reminders);").all().map(c => c.name);
+  const ensure = (sql) => {
+    try { db.exec(sql); } catch (e) { /* ignore if fails (shouldn't) */ }
+  };
+
+  if (!cols.includes('topic')) {
+    console.log('migrations: adding reminders.topic column');
+    ensure("ALTER TABLE reminders ADD COLUMN topic TEXT");
+  }
+  if (!cols.includes('server_url')) {
+    console.log('migrations: adding reminders.server_url column');
+    ensure("ALTER TABLE reminders ADD COLUMN server_url TEXT");
+  }
+  if (!cols.includes('sent')) {
+    console.log('migrations: adding reminders.sent and reminders.sent_at columns');
+    ensure("ALTER TABLE reminders ADD COLUMN sent INTEGER DEFAULT 0");
+    ensure("ALTER TABLE reminders ADD COLUMN sent_at TEXT");
+  }
+} catch (err) {
+  console.warn('ensure-schema failed, continuing:', err && err.message ? err.message : err);
+}
+// --- end ensure-schema ---
+
+
 module.exports = { db, migrate, DB_PATH };

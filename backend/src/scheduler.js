@@ -3,11 +3,17 @@ const fetch = global.fetch || require('node-fetch');
 
 let timer = null;
 
-function sendNtfy(serverUrl, topic, title, message) {
+// replace existing sendNtfy(...) with this
+function sendNtfy(serverUrl, topic, title, message, priority = '3') {
   const url = `${serverUrl.replace(/\/+$/,'')}/${encodeURIComponent(topic)}`;
+  // ntfy accepts numeric priority 1-5; using '3' as normal avoids "invalid priority" errors
+  const headers = {
+    Title: title,
+    Priority: String(priority)
+  };
   return fetch(url, {
     method: 'POST',
-    headers: { 'Title': title, 'Priority': 'normal' },
+    headers,
     body: message
   }).then(async r => {
     const text = await r.text().catch(() => '');
@@ -15,6 +21,7 @@ function sendNtfy(serverUrl, topic, title, message) {
     return r.ok;
   });
 }
+
 
 function getRemindersColumns() {
   try {
