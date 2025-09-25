@@ -16,56 +16,72 @@ function sendNtfy(serverUrl, topic, title, message) {
   });
 }
 
+function getRemindersColumns() {
+  try {
+    const cols = db.prepare("PRAGMA table_info(reminders);").all();
+    return cols.map(c => c.name);
+  } catch (err) {
+    console.error('scheduler: failed to read PRAGMA table_info(reminders):', err && err.message ? err.message : err);
+    return [];
+  }
+}
+
 async function tick() {
   try {
     const nowMs = Date.now();
+    const cols = getRemindersColumns();
+    const hasSent = cols.includes('sent');
+    const hasRemindAt = cols.includes('remind_at');
 
-    // Primary, robust SQL (no table-qualified column names in WHERE)
-    const primarySql = `
-      SELECT reminders.*, tasks.title, tasks.notes
-      FROM reminders
-      JOIN tasks ON tasks.id = reminders.task_id
-      WHERE (sent IS NULL OR sent = 0)
-        AND (strftime('%s', remind_at) * 1000) <= ?
-    `;
+    let due = [];
 
-    let due;
-    try {
-      due = db.prepare(primarySql).all(nowMs);
-    } catch (err) {
-      // Log schema and the error, then try fallback queries
-      console.error('scheduler: prepare failed for primary SQL', err && err.message ? err.message : err);
-      try {
-        console.error('scheduler: PRAGMA table_info(reminders):', db.prepare("PRAGMA table_info(reminders);").all());
-      } catch (pErr) {
-        console.error('scheduler: failed to read PRAGMA', pErr && pErr.message ? pErr.message : pErr);
+    // Build SQL according to available columns
+    if (hasRemindAt) {
+      if (hasSent) {
+        // preferred robust query
+        const sql = `
+          SELECT reminders.*, tasks.title, tasks.notes
+          FROM reminders
+          JOIN tasks ON tasks.id = reminders.task_id
+          WHERE (sent IS NULL OR sent = 0)
+            AND (strftime('%s', remind_at) * 1000) <= ?
+        `;
+        try {
+          due = db.prepare(sql).all(nowMs);
+        } catch (err) {
+          console.error('scheduler: primary query prepare failed:', err && err.message ? err.message : err);
+          console.error('scheduler: PRAGMA table_info(reminders):', db.prepare("PRAGMA table_info(reminders);").all());
+        }
+      } else {
+        // no sent column, select rows due by remind_at and join tasks in JS
+        try {
+          const rows = db.prepare("SELECT * FROM reminders WHERE (strftime('%s', remind_at) * 1000) <= ?").all(nowMs);
+          if (rows && rows.length) {
+            const taskStmt = db.prepare("SELECT id, title, notes FROM tasks WHERE id = ?");
+            for (const r of rows) {
+              const t = taskStmt.get(r.task_id) || {};
+              due.push(Object.assign({}, r, { title: t.title, notes: t.notes }));
+            }
+          }
+        } catch (err) {
+          console.error('scheduler: remind_at-based fallback failed:', err && err.message ? err.message : err);
+          console.error('scheduler: PRAGMA table_info(reminders):', db.prepare("PRAGMA table_info(reminders);").all());
+        }
       }
-
-      // Fallback 1: select without join (we'll join in JS)
+    } else {
+      // no remind_at column: select all pending (best-effort) and fetch tasks
       try {
-        const rows = db.prepare(
-          "SELECT * FROM reminders WHERE (sent IS NULL OR sent = 0) AND (strftime('%s', remind_at) * 1000) <= ?"
-        ).all(nowMs);
+        const rows = db.prepare("SELECT * FROM reminders").all();
         if (rows && rows.length) {
-          // fetch tasks for those reminders
-          due = [];
-          const taskStmt = db.prepare("SELECT id,title,notes FROM tasks WHERE id = ?");
+          const taskStmt = db.prepare("SELECT id, title, notes FROM tasks WHERE id = ?");
           for (const r of rows) {
             const t = taskStmt.get(r.task_id) || {};
             due.push(Object.assign({}, r, { title: t.title, notes: t.notes }));
           }
-        } else {
-          due = [];
         }
-      } catch (fb1Err) {
-        console.error('scheduler: fallback1 failed', fb1Err && fb1Err.message ? fb1Err.message : fb1Err);
-        // Fallback 2: try simplest prepare (no strftime) to test
-        try {
-          due = db.prepare("SELECT * FROM reminders WHERE (sent IS NULL OR sent = 0)").all();
-        } catch (fb2Err) {
-          console.error('scheduler: fallback2 failed', fb2Err && fb2Err.message ? fb2Err.message : fb2Err);
-          return;
-        }
+      } catch (err) {
+        console.error('scheduler: final fallback select failed:', err && err.message ? err.message : err);
+        return;
       }
     }
 
@@ -81,7 +97,7 @@ async function tick() {
     for (const r of due) {
       try {
         console.log('scheduler: processing reminder', r.id, r.remind_at, 'nowMs=', nowMs);
-        if (r.channel === 'ntfy') {
+        if (r.channel === 'ntfy' || (!r.channel && (r.server_url || settings.ntfy_server))) {
           const server = r.server_url || settings.ntfy_server || 'https://ntfy.sh';
           const topic = r.topic || settings.ntfy_topic;
           if (!topic) {
@@ -96,13 +112,20 @@ async function tick() {
             continue;
           }
         } else {
-          console.warn('unknown channel for reminder', r.id, r.channel);
+          console.warn('unknown or unsupported channel for reminder', r.id, r.channel);
           continue;
         }
 
-        // mark sent only after successful publish
-        db.prepare("UPDATE reminders SET sent = 1, sent_at = datetime('now') WHERE id = ?").run(r.id);
-        console.log('scheduler: marked sent', r.id);
+        // update DB: set sent if column exists, always try to set sent_at if column exists
+        if (hasSent && cols.includes('sent_at')) {
+          db.prepare("UPDATE reminders SET sent = 1, sent_at = datetime('now') WHERE id = ?").run(r.id);
+          console.log('scheduler: marked sent', r.id);
+        } else if (cols.includes('sent_at')) {
+          db.prepare("UPDATE reminders SET sent_at = datetime('now') WHERE id = ?").run(r.id);
+          console.log('scheduler: updated sent_at (no sent column) for', r.id);
+        } else {
+          console.log('scheduler: no sent/sent_at column to update for', r.id);
+        }
       } catch (err) {
         console.error('failed to send reminder', r.id, err && err.stack ? err.stack : err);
       }
@@ -116,7 +139,7 @@ module.exports = {
   start(intervalMs = 60000) {
     if (timer) clearInterval(timer);
     timer = setInterval(() => { tick(); }, intervalMs);
-    // run once after short delay so startup migrations finish
+    // run once after a short delay so startup migrations can finish
     setTimeout(() => tick(), 2000);
     console.log('scheduler started (interval ms):', intervalMs);
   },
