@@ -79,6 +79,16 @@ function migrate(db) {
         FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
       );
     `);
+// somewhere after creating `db` in src/db.js
+try {
+  const cols = db.prepare("PRAGMA table_info(reminders);").all().map(c => c.name);
+  if (!cols.includes('topic')) {
+    console.log('adding topic column to reminders');
+    db.exec("ALTER TABLE reminders ADD COLUMN topic TEXT");
+  }
+} catch (e) {
+  console.warn('ensure topic column failed (continuing):', e && e.message ? e.message : e);
+}
 
     // Inspect current reminders columns and add missing ones
     const cols = db.prepare("PRAGMA table_info(reminders);").all().map(c => c.name);
