@@ -37,20 +37,37 @@ function TaskCard({ task, onRefresh }) {
   const [remAt, setRemAt] = useState('');
   const [topic, setTopic] = useState('');
   const [serverUrl, setServerUrl] = useState('');
-  useEffect(()=> {
-    // no-op
-  }, []);
+
+  // helper: combine local date/time into UTC ISO
+  const buildIsoFromLocal = (localDatetime) => {
+    if (!localDatetime) return null;
+    // ensure seconds present
+    const timePart = localDatetime.split('T')[1] || '';
+    const hasSeconds = timePart.split(':').length === 3;
+    const withSeconds = hasSeconds ? localDatetime : `${localDatetime}:00`;
+    const d = new Date(withSeconds);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  };
+
   const addReminder = async () => {
+    const remind_at_iso = buildIsoFromLocal(remAt);
+    if (!remind_at_iso) {
+      // simple client-side validation; server will also validate
+      alert('Please provide a valid date and time');
+      return;
+    }
     await api.post(`/tasks/${task.id}/reminders`, {
-      remind_at: remAt,
+      remind_at: remind_at_iso,
       channel: 'ntfy',
       server_url: serverUrl || undefined,
       topic: topic || undefined
     });
-    setShowRemForm(false); setRemAt(''); onRefresh && onRefresh();
+    setShowRemForm(false); setRemAt(''); setTopic(''); setServerUrl('');
+    onRefresh && onRefresh();
   };
   const deleteReminder = async (id) => {
-    await api.delete(`/reminders/${id}`);
+    await api.delete(`/tasks/${task.id}/reminders/${id}`);
     onRefresh && onRefresh();
   };
   return (
@@ -78,6 +95,11 @@ function TaskCard({ task, onRefresh }) {
           <div style={{display:'flex', gap:8, marginTop:8}}>
             <button className="btn small" onClick={addReminder}>Add</button>
             <button className="btn secondary small" onClick={()=>setShowRemForm(false)}>Cancel</button>
+          </div>
+          <div style={{marginTop:8}}>
+            <small className="muted">Sending (UTC): {buildIsoFromLocal(remAt) || '—'}</small>
+            <br />
+            <small className="muted">Preview (local): {remAt ? new Date(buildIsoFromLocal(remAt)).toLocaleString() : '—'}</small>
           </div>
         </div>
       )}
