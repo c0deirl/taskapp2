@@ -203,6 +203,8 @@ router.post('/tasks/:id/reminders', (req, res) => {
     if (!taskExists(taskId)) return res.status(404).json({ error: 'task not found' });
 
     const body = req.body || {};
+    
+    console.log('POST /tasks/:id/reminders req.body:', req.body);
 
     // Normalize remind_at to a canonical UTC ISO string (accepts epoch, ISO with TZ, or naive local)
     let remind_at_raw = body.remind_at || body.when_at || null;
