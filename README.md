@@ -118,4 +118,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Note: Screenshots and license file should be added for a complete GitHub repo.*
+
+
