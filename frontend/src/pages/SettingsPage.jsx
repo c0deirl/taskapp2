@@ -50,12 +50,12 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="settings-container">
+    <div style={{gridColumn:'1/-1', display:'flex', gap:20}}>
       <div className="left settings">
         <h3>Application</h3>
-        <label>App title</label>
-        <input type="text" value={appTitle} onChange={e=>setAppTitle(e.target.value)} placeholder="TaskMgr" />
-        <label>Logo</label>
+        <label className="muted">App title</label>
+        <input value={appTitle} onChange={e=>setAppTitle(e.target.value)} placeholder="TaskMgr" />
+        <label className="muted" style={{marginTop:8}}>Logo</label>
         <div style={{display:'flex',gap:12,alignItems:'center'}}>
           <div style={{width:64,height:64,borderRadius:10,overflow:'hidden',background:'rgba(255,255,255,0.02)'}}>
             {appLogo ? <img src={appLogo} alt="logo" style={{width:'100%',height:'100%',objectFit:'cover'}} /> : <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)'}}>No logo</div>}
@@ -71,10 +71,10 @@ export default function SettingsPage() {
 
         <div style={{marginTop:18}}>
           <h3>Notifications - NTFY</h3>
-          <label>Default NTFY server URL</label>
-          <input type="text" placeholder="https://ntfy.sh" value={ntfyServer} onChange={e=>setNtfyServer(e.target.value)} />
-          <label>Default topic</label>
-          <input type="text" placeholder="my-topic" value={ntfyTopic} onChange={e=>setNtfyTopic(e.target.value)} />
+          <label className="muted">Default NTFY server URL</label>
+          <input placeholder="https://ntfy.sh" value={ntfyServer} onChange={e=>setNtfyServer(e.target.value)} />
+          <label className="muted">Default topic</label>
+          <input placeholder="my-topic" value={ntfyTopic} onChange={e=>setNtfyTopic(e.target.value)} />
         </div>
 
         <div style={{marginTop:12, display:'flex', gap:8}}>
@@ -88,7 +88,7 @@ export default function SettingsPage() {
         <h3>Preview</h3>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
           <div style={{width:72,height:72,borderRadius:12,overflow:'hidden',background:'transparent'}}>
-            {appLogo ? <img src={appLogo} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="logo" /> : <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)'}}>No logo</div>}
+            {appLogo ? <img src={appLogo} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="logo" /> : <div style={{width:'100%',height:'100%'}} />}
           </div>
           <div>
             <div style={{fontWeight:700,fontSize:18}}>{appTitle || 'TaskMgr'}</div>

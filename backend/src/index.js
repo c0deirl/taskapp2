@@ -3,15 +3,12 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const morgan = require('morgan');
-const cors = require('cors');
 const api = require('./api');          // your routes (assumes router exported)
 const { DB_PATH } = require('./db');  // ensures db.js runs migrations on require
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const app = express();
-
-app.use(cors());
 
 // Logging
 app.use(morgan('combined'));

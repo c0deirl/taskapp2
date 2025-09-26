@@ -39,7 +39,7 @@ export default function App() {
           src={settings.app_logo}
           alt="logo"
           className="logo"
-          style={{ height: 64, width: 64, borderRadius: 10, objectFit: 'cover' }}
+          style={{ height: 44, width: 44, borderRadius: 10, objectFit: 'cover' }}
         />
       );
     }
@@ -51,7 +51,7 @@ export default function App() {
       <header className="header">
         <div className="brand">
           <HeaderLogo />
-          <h1 style={{ fontSize: '3rem', margin: 0, fontWeight: 700, letterSpacing: '0.025em' }}>{loadingSettings ? '...' : (settings.app_title || 'TaskMgr')}</h1>
+          <h1>{loadingSettings ? '...' : (settings.app_title || 'TaskMgr')}</h1>
         </div>
 
         <div className="header-actions">

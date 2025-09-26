@@ -15,6 +15,14 @@ function toUtcIsoFromLocalDatetime(localDatetime) {
   return d.toISOString();
 }
 
+// Helper: convert UTC ISO string back to datetime-local format (YYYY-MM-DDTHH:MM)
+function fromUtcIsoToLocalDatetime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function NewTask({ onCreated }) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -32,10 +40,8 @@ function NewTask({ onCreated }) {
   return (
     <div className="left task-editor">
       <h3>Create Task</h3>
-      <label className="muted">Title</label>
-      <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Title" />
-      <label className="muted">Notes (optional)</label>
-      <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes (optional)" />
+      <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Title" />
+      <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes (optional)"/>
       <label className="muted">Due date</label>
       <input type="datetime-local" value={dueAt} onChange={e=>setDueAt(e.target.value)} />
       <button className="btn" onClick={create}>Save Task</button>
@@ -53,7 +59,7 @@ function ReminderRow({ reminder, onDelete }) {
   );
 }
 
-function TaskCard({ task, onRefresh }) {
+function TaskCard({ task, onRefresh, onEdit }) {
   const [showRemForm, setShowRemForm] = useState(false);
   const [remAt, setRemAt] = useState('');
   const [topic, setTopic] = useState('');
@@ -92,22 +98,23 @@ function TaskCard({ task, onRefresh }) {
       </div>
       <div style={{display:'flex', flexDirection:'column', gap:8, marginLeft:12}}>
         <button className="btn secondary small" onClick={()=>setShowRemForm(v=>!v)}>Reminder</button>
+        <button className="btn primary small" onClick={() => onEdit(task)}>Edit</button>
         <button className="btn ghost small" onClick={async ()=>{ await api.delete(`/tasks/${task.id}`); onRefresh && onRefresh(); }}>Delete</button>
       </div>
 
       {showRemForm && (
-        <div className="task-editor" style={{marginTop:12, width:'100%'}}>
-          <label>Remind at</label>
+        <div style={{marginTop:12, width:'100%'}}>
+          <label className="muted">Remind at</label>
           <input type="datetime-local" value={remAt} onChange={e=>setRemAt(e.target.value)} />
-          <label>NTFY topic (optional)</label>
-          <input type="text" placeholder="topic" value={topic} onChange={e=>setTopic(e.target.value)} />
-          <label>NTFY server (optional override)</label>
-          <input type="text" placeholder="https://ntfy.example" value={serverUrl} onChange={e=>setServerUrl(e.target.value)} />
-          <div style={{display:'flex', gap:8, marginTop:12}}>
+          <label className="muted">NTFY topic (optional)</label>
+          <input placeholder="topic" value={topic} onChange={e=>setTopic(e.target.value)} />
+          <label className="muted">NTFY server (optional override)</label>
+          <input placeholder="https://ntfy.example" value={serverUrl} onChange={e=>setServerUrl(e.target.value)} />
+          <div style={{display:'flex', gap:8, marginTop:8}}>
             <button className="btn small" onClick={addReminder}>Add</button>
             <button className="btn secondary small" onClick={()=>setShowRemForm(false)}>Cancel</button>
           </div>
-          <div style={{marginTop:12}}>
+          <div style={{marginTop:8}}>
             <small className="muted">Sending (UTC): {buildIsoFromLocal(remAt) || '—'}</small>
             <br />
             <small className="muted">Preview (local): {remAt ? new Date(buildIsoFromLocal(remAt)).toLocaleString() : '—'}</small>
@@ -125,13 +132,79 @@ export default function TasksPage() {
     setTasks(res || []);
   };
   useEffect(()=>{ load(); }, []);
+  const [editingTask, setEditingTask] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editDueAt, setEditDueAt] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleCancelEdit = () => setEditingTask(null);
+
+  useEffect(() => {
+    if (editingTask) {
+      setEditTitle(editingTask.title || '');
+      setEditNotes(editingTask.notes || '');
+      setEditDueAt(fromUtcIsoToLocalDatetime(editingTask.due_at));
+    } else {
+      setEditTitle('');
+      setEditNotes('');
+      setEditDueAt('');
+    }
+  }, [editingTask]);
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim()) {
+      alert('Title is required');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await api.put(`/tasks/${editingTask.id}`, {
+        title: editTitle.trim(),
+        notes: editNotes.trim() || null,
+        due_at: editDueAt ? toUtcIsoFromLocalDatetime(editDueAt) : null
+      });
+      setEditingTask(null);
+      load();
+    } catch (err) {
+      alert('Failed to update task: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <>
       <NewTask onCreated={load} />
+      {editingTask && (
+        <div className="left task-editor" style={{position: 'relative', zIndex: 10}}>
+          <h3>Edit Task</h3>
+          <button className="btn ghost small" onClick={handleCancelEdit} style={{position: 'absolute', top: 0, right: 0}}>Cancel</button>
+          <input
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            placeholder="Task title"
+          />
+          <textarea
+            value={editNotes}
+            onChange={(e) => setEditNotes(e.target.value)}
+            placeholder="Notes (optional)"
+          />
+          <label className="muted">Due date (optional)</label>
+          <input
+            type="datetime-local"
+            value={editDueAt}
+            onChange={(e) => setEditDueAt(e.target.value)}
+          />
+          <button className="btn" onClick={handleSaveEdit} disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      )}
       <div className="right">
         <h3>Tasks</h3>
         <div className="task-list">
-          {tasks.map(t => <TaskCard key={t.id} task={t} onRefresh={load} />)}
+          {tasks.map(t => <TaskCard key={t.id} task={t} onRefresh={load} onEdit={setEditingTask} />)}
           {tasks.length === 0 && <div className="muted">No tasks yet.</div>}
         </div>
       </div>
