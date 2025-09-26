@@ -12,7 +12,6 @@ A modern, self-hosted task management application with reminder functionality, b
 - **Responsive Design**: Works seamlessly on desktop and mobile devices.
 - **Dark Theme**: Modern, eye-friendly interface with customizable colors.
 - **Self-Hosted**: Easy deployment via Docker or local development.
-- **API Protection**: Backend secured with Basic Auth for administrative access.
 
 ## Quick Start (Docker)
 
@@ -117,6 +116,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - For production, monitor logs in Docker containers.
 
 ---
+
 
 
 
